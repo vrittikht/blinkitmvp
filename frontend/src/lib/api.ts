@@ -15,6 +15,7 @@ import {
   mockCheckout,
   mockRedeemCoupon,
   mockSpin,
+  saveSpinCouponLocally,
   syncExploredCategory,
 } from "@/lib/mock-quest";
 
@@ -130,7 +131,10 @@ export async function postSpin(_userId?: number): Promise<SpinResult> {
 
   try {
     const result = await apiPost<SpinResult>("/spin", {});
-    if (result?.coupon && Array.isArray(result.segments)) return result;
+    if (result?.coupon && Array.isArray(result.segments)) {
+      saveSpinCouponLocally(result.coupon);
+      return result;
+    }
   } catch {
     /* fall through to mock */
   }
@@ -139,27 +143,22 @@ export async function postSpin(_userId?: number): Promise<SpinResult> {
   return mockSpin();
 }
 
+/** Spin wallet used at checkout — only coupons earned from the wheel. */
 export async function fetchCoupons(_userId?: number): Promise<Coupon[]> {
-  const local = getMockCoupons();
-  try {
-    const api = await apiGet<Coupon[]>("/coupons");
-    const byId = new Map<number, Coupon>();
-    for (const c of api ?? []) byId.set(c.id, c);
-    for (const c of local) byId.set(c.id, c); // local demo wins on id clash
-    return Array.from(byId.values()).sort((a, b) => b.id - a.id);
-  } catch {
-    return local;
-  }
+  return getMockCoupons().filter((c) => !c.status || c.status === "active");
 }
 
 export async function redeemCoupon(
   couponId: number,
 ): Promise<{ id: number; status: string; message: string }> {
+  // Always clear from local demo wallet so checkout removes used coupons
+  const local = mockRedeemCoupon(couponId);
   try {
-    return await apiPost(`/coupons/${couponId}/redeem`, {});
+    await apiPost(`/coupons/${couponId}/redeem`, {});
   } catch {
-    return mockRedeemCoupon(couponId);
+    /* local already redeemed */
   }
+  return local;
 }
 
 export const PENDING_SPIN_KEY = "category-quest-pending-spin";

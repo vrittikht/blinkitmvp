@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Clock, Home, Search, Share2, ShoppingBag } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, Clock, Home, Search, Share2, ShoppingBag, Ticket } from "lucide-react";
 
 import { ProductImage } from "@/components/catalog/product-card";
 import { useCart } from "@/components/cart/cart-provider";
@@ -12,11 +13,55 @@ import {
   deliveryFeeFor,
   formatInr,
 } from "@/lib/commerce";
+import {
+  applyCouponToBill,
+  describeCouponEffect,
+  isCouponApplicable,
+} from "@/lib/coupons";
 import { DEMO_PROFILE } from "@/lib/demo-profile";
+import { redeemCoupon } from "@/lib/api";
+import { getMockCoupons } from "@/lib/mock-quest";
+import type { Coupon } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+function activeCoupons(list: Coupon[]) {
+  return list.filter((c) => !c.status || c.status === "active");
+}
 
 export default function CartPage() {
   const router = useRouter();
   const { items, subtotal, setQuantity, removeItem, primaryCategory, clearCart } = useCart();
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [placing, setPlacing] = useState(false);
+
+  const reloadCoupons = () => {
+    // Checkout only shows coupons won from the spin wheel (local spin wallet)
+    setCoupons(activeCoupons(getMockCoupons()));
+  };
+
+  useEffect(() => {
+    reloadCoupons();
+    const onFocus = () => reloadCoupons();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  const selected = useMemo(
+    () => coupons.find((c) => c.id === selectedId) ?? null,
+    [coupons, selectedId],
+  );
+
+  useEffect(() => {
+    if (!selected) return;
+    const check = isCouponApplicable(selected, items, subtotal);
+    if (!check.ok) setSelectedId(null);
+  }, [selected, items, subtotal]);
+
+  const deliveryBefore = deliveryFeeFor(subtotal);
+  const bill = applyCouponToBill(subtotal, deliveryBefore, selected, items);
+  const remainingForFree = Math.max(0, FREE_DELIVERY_MIN - subtotal);
+  const itemCount = items.reduce((n, i) => n + i.quantity, 0);
 
   if (items.length === 0) {
     return (
@@ -36,28 +81,35 @@ export default function CartPage() {
     );
   }
 
-  const delivery = deliveryFeeFor(subtotal);
-  const toPay = subtotal + delivery;
-  const remainingForFree = Math.max(0, FREE_DELIVERY_MIN - subtotal);
-  const itemCount = items.reduce((n, i) => n + i.quantity, 0);
-
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
+    if (placing) return;
+    setPlacing(true);
     const category = primaryCategory ?? items[0].product.category_name ?? "Unknown";
+
+    if (selected) {
+      try {
+        await redeemCoupon(selected.id);
+      } catch {
+        /* local redeem handled in api */
+      }
+    }
+
     const params = new URLSearchParams({
       category,
-      total: String(toPay),
+      total: String(bill.toPay),
       subtotal: String(subtotal),
-      delivery: String(delivery),
+      delivery: String(bill.delivery),
+      discount: String(bill.discount),
       items: String(itemCount),
       oid: String(Date.now()),
     });
+    if (selected) params.set("coupon", selected.reward_name);
     clearCart();
     router.push(`/order/tracking?${params.toString()}`);
   };
 
   return (
     <div className="flex min-h-dvh flex-col bg-[#f4f4f4] dark:bg-background">
-      {/* Checkout header */}
       <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-white px-3 py-3 dark:bg-card">
         <button
           type="button"
@@ -87,6 +139,89 @@ export default function CartPage() {
           </button>
         </div>
 
+        {/* Apply coupon — first thing after address */}
+        <section className="rounded-xl border-2 border-[#F8CB46] bg-[#fff8e1] p-3 dark:border-primary dark:bg-accent">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="flex items-center gap-1.5 text-sm font-bold">
+              <Ticket className="size-4 text-primary" />
+              Apply coupon
+            </h2>
+            <button
+              type="button"
+              onClick={reloadCoupons}
+              className="text-xs font-semibold text-primary"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {coupons.length === 0 ? (
+            <div className="rounded-lg bg-white px-3 py-3 dark:bg-card">
+              <p className="text-xs font-semibold text-foreground">No spin coupons yet</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                Coupons appear here only after you win them on the spin wheel. Category coupons
+                work only on that category (e.g. Personal Care ≠ Baby Care).
+              </p>
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {coupons.map((coupon) => {
+                const check = isCouponApplicable(coupon, items, subtotal);
+                const effect = describeCouponEffect(coupon);
+                const active = selectedId === coupon.id;
+                return (
+                  <li key={coupon.id}>
+                    <button
+                      type="button"
+                      disabled={!check.ok}
+                      onClick={() => setSelectedId(active ? null : coupon.id)}
+                      className={cn(
+                        "flex w-full items-start gap-3 rounded-xl border bg-white px-3 py-3 text-left dark:bg-card",
+                        active
+                          ? "border-primary ring-2 ring-primary/25"
+                          : "border-border",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold",
+                          active
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-muted-foreground",
+                        )}
+                      >
+                        {active ? "✓" : ""}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-bold text-foreground">
+                          {coupon.reward_name}
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                          {check.ok ? effect.label : check.reason}
+                        </span>
+                      </span>
+                      <span className={cn(
+                        "shrink-0 rounded-md px-2 py-1 text-[10px] font-bold",
+                        check.ok
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-muted-foreground",
+                      )}>
+                        {active ? "APPLIED" : check.ok ? "APPLY" : "LOCKED"}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {selected && bill.discount > 0 && (
+            <p className="mt-2 text-center text-xs font-bold text-primary">
+              You save {formatInr(bill.discount)} on this bill
+            </p>
+          )}
+        </section>
+
         <div className="rounded-xl border border-border bg-white px-3 py-3 dark:bg-card">
           <div className="flex items-center gap-2">
             <Clock className="size-5 text-primary" />
@@ -98,23 +233,16 @@ export default function CartPage() {
         </div>
 
         {remainingForFree > 0 ? (
-          <div className="rounded-xl bg-[#fff8e1] px-3 py-2.5 text-xs dark:bg-accent">
+          <div className="rounded-xl bg-white px-3 py-2.5 text-xs dark:bg-card">
             Add <span className="font-bold">{formatInr(remainingForFree)}</span> more for{" "}
             <span className="font-bold text-primary">FREE delivery</span>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
-              <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${Math.min(100, (subtotal / FREE_DELIVERY_MIN) * 100)}%` }}
-              />
-            </div>
           </div>
         ) : (
           <div className="rounded-xl bg-primary/10 px-3 py-2 text-xs font-semibold text-primary">
-            Yay! FREE delivery on this order (₹{FREE_DELIVERY_MIN}+)
+            Yay! FREE delivery on this order
           </div>
         )}
 
-        {/* Items */}
         <section className="overflow-hidden rounded-xl border border-border bg-white dark:bg-card">
           {items.map(({ product, quantity }, idx) => (
             <div
@@ -136,7 +264,7 @@ export default function CartPage() {
                   className="mt-1 text-xs text-muted-foreground"
                   onClick={() => removeItem(product.id)}
                 >
-                  Move to wishlist
+                  Remove
                 </button>
               </div>
               <div className="flex flex-col items-end justify-between">
@@ -163,20 +291,6 @@ export default function CartPage() {
           ))}
         </section>
 
-        <div className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-[#fff4d4] to-[#ffe9a8] px-3 py-3 dark:from-accent dark:to-accent">
-          <span className="text-2xl">🎁</span>
-          <div className="flex-1">
-            <p className="text-sm font-bold text-foreground">Make this a gift!</p>
-            <p className="text-xs text-muted-foreground">Special gift bag for just ₹30</p>
-          </div>
-          <button
-            type="button"
-            className="rounded-lg border border-primary px-3 py-1.5 text-xs font-bold text-primary"
-          >
-            Select
-          </button>
-        </div>
-
         <section className="rounded-xl border border-border bg-white p-3 dark:bg-card">
           <h2 className="text-sm font-bold">Bill details</h2>
           <dl className="mt-2 space-y-2 text-sm">
@@ -187,32 +301,35 @@ export default function CartPage() {
             <div className="flex justify-between">
               <dt className="text-muted-foreground">Delivery partner fee</dt>
               <dd className="font-medium">
-                {delivery === 0 ? (
+                {bill.delivery === 0 ? (
                   <span className="text-primary">FREE</span>
                 ) : (
                   formatInr(DELIVERY_FEE)
                 )}
               </dd>
             </div>
+            {bill.discount > 0 && (
+              <div className="flex justify-between text-primary">
+                <dt>Coupon discount</dt>
+                <dd className="font-semibold">−{formatInr(bill.discount)}</dd>
+              </div>
+            )}
+            {selected && (
+              <p className="text-[11px] text-muted-foreground">{selected.reward_name}</p>
+            )}
             <div className="flex justify-between border-t border-border pt-2 font-bold">
               <dt>To pay</dt>
-              <dd>{formatInr(toPay)}</dd>
+              <dd>{formatInr(bill.toPay)}</dd>
             </div>
           </dl>
         </section>
       </div>
 
-      {/* Sticky place order footer */}
       <div className="fixed bottom-0 left-1/2 z-40 w-full max-w-md -translate-x-1/2 border-t border-border bg-white dark:bg-card">
         <div className="flex items-center gap-2 px-3 py-2">
           <Home className="size-5 text-[var(--blinkit-yellow-deep)]" fill="currentColor" />
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold">
-              Delivering to Home{" "}
-              <button type="button" className="font-semibold text-primary">
-                Change
-              </button>
-            </p>
+            <p className="text-xs font-bold">Delivering to Home</p>
             <p className="truncate text-[11px] text-muted-foreground">
               {DEMO_PROFILE.addressFull}
             </p>
@@ -228,13 +345,12 @@ export default function CartPage() {
           </button>
           <button
             type="button"
-            onClick={handleCheckout}
-            className="flex h-12 flex-1 items-center justify-between rounded-xl bg-primary px-4 text-primary-foreground"
+            disabled={placing}
+            onClick={() => void handleCheckout()}
+            className="flex h-12 flex-1 items-center justify-between rounded-xl bg-primary px-4 text-primary-foreground disabled:opacity-70"
           >
-            <span className="text-sm font-bold">{formatInr(toPay)} TOTAL</span>
-            <span className="text-sm font-bold">
-              Place Order <span aria-hidden>›</span>
-            </span>
+            <span className="text-sm font-bold">{formatInr(bill.toPay)} TOTAL</span>
+            <span className="text-sm font-bold">Place Order ›</span>
           </button>
         </div>
       </div>

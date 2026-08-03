@@ -1,7 +1,7 @@
 """~20 reward templates for Category Quest spins."""
 
 REWARD_TEMPLATES: list[dict] = [
-    {"reward_name": "₹40 OFF Beauty", "discount": "₹40 OFF", "category": "Personal Care"},
+    {"reward_name": "₹40 OFF Personal Care", "discount": "₹40 OFF", "category": "Personal Care"},
     {"reward_name": "₹50 OFF Pharmacy", "discount": "₹50 OFF", "category": "Pharmacy"},
     {"reward_name": "₹75 OFF Kitchen Essentials", "discount": "₹75 OFF", "category": "Kitchen Essentials"},
     {"reward_name": "₹60 OFF Home Cleaning", "discount": "₹60 OFF", "category": "Home Cleaning"},

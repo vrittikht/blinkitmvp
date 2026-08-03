@@ -44,6 +44,8 @@ function TrackingContent() {
   const total = Number(params.get("total") ?? 0);
   const subtotal = Number(params.get("subtotal") ?? total);
   const delivery = Number(params.get("delivery") ?? 0);
+  const discount = Number(params.get("discount") ?? 0);
+  const couponName = params.get("coupon");
   const items = params.get("items") ?? "1";
   const oid = params.get("oid") ?? "demo";
 
@@ -277,6 +279,15 @@ function TrackingContent() {
                 {delivery <= 0 ? <span className="text-primary">FREE</span> : formatInr(delivery)}
               </dd>
             </div>
+            {discount > 0 && (
+              <div className="flex justify-between text-primary">
+                <dt>Coupon discount</dt>
+                <dd className="font-medium">−{formatInr(discount)}</dd>
+              </div>
+            )}
+            {couponName && (
+              <p className="text-[11px] text-muted-foreground">Applied: {couponName}</p>
+            )}
             <div className="flex justify-between border-t border-border pt-2">
               <dt className="font-semibold">Paid (demo)</dt>
               <dd className="font-bold">{formatInr(total || subtotal)}</dd>

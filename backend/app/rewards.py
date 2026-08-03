@@ -17,7 +17,7 @@ WHEEL_REWARD_NAMES = [
     "₹75 OFF Kitchen Essentials",
     "₹80 OFF Stationery",
     "Free Delivery",
-    "₹40 OFF Beauty",
+    "₹40 OFF Personal Care",
     "₹45 OFF Snacks",
     "2× Reward Points",
     "₹60 OFF Home Cleaning",

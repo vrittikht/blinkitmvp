@@ -1,4 +1,5 @@
 import type { CheckoutResult, Coupon, QuestProgress, SpinResult, WheelSegment } from "@/lib/types";
+import { normalizeCategoryName } from "@/lib/coupons";
 
 const EXPLORED_KEY = "cq-explored-categories";
 const SPINS_KEY = "cq-spins-remaining";
@@ -15,7 +16,7 @@ export const MOCK_REWARDS = [
   "Free Delivery",
   "₹60 OFF Home Cleaning",
   "2× Reward Points",
-  "₹40 OFF Beauty",
+  "₹40 OFF Personal Care",
   "₹80 OFF Stationery",
 ] as const;
 
@@ -167,7 +168,10 @@ export function mockSpin(): SpinResult {
     id: Date.now(),
     reward_name,
     discount,
-    category: null,
+    category: (() => {
+      const off = reward_name.match(/OFF\s+(.+)$/i);
+      return normalizeCategoryName(off?.[1]?.trim() ?? null);
+    })(),
     expiry_date: new Date(Date.now() + 30 * 86400000).toISOString(),
     status: "active",
     days_remaining: 30,
@@ -185,6 +189,22 @@ export function mockSpin(): SpinResult {
     progress: getMockProgress(),
     message: `You won ${reward_name}`,
   };
+}
+
+/** Persist a coupon won from /spin (API or mock) into the local spin wallet. */
+export function saveSpinCouponLocally(coupon: Coupon) {
+  const normalized: Coupon = {
+    ...coupon,
+    category: normalizeCategoryName(coupon.category) ?? (() => {
+      const off = coupon.reward_name.match(/OFF\s+(.+)$/i);
+      return normalizeCategoryName(off?.[1]?.trim() ?? null);
+    })(),
+    status: coupon.status || "active",
+  };
+  const coupons = readJson<Coupon[]>(COUPONS_KEY, []);
+  if (coupons.some((c) => c.id === normalized.id)) return;
+  coupons.unshift(normalized);
+  writeJson(COUPONS_KEY, coupons);
 }
 
 export function getMockCoupons(): Coupon[] {
