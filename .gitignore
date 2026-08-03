@@ -1,0 +1,38 @@
+# Category Quest MVP
+.DS_Store
+Thumbs.db
+*.log
+
+# Python
+backend/.venv/
+backend/**/__pycache__/
+backend/*.db
+backend/.env
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+
+# IDE
+.idea/
+.vscode/
+
+# Phase workspaces
+phase-*/frontend/node_modules/
+phase-*/frontend/.next/
+phase-*/frontend/.env.local
+phase-*/backend/.venv/
+phase-*/backend/**/__pycache__/
+phase-*/backend/*.db
+phase-*/backend/.env
+
+# Legacy root apps (if still present)
+frontend/node_modules/
+frontend/.next/
+backend/.venv/
+backend/*.db
+
+# Local phase snapshots (not for deploy)
+phase-*/
+
