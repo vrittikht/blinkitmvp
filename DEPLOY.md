@@ -1,6 +1,8 @@
 # Deploy — Category Quest MVP
 
-One frontend (Vercel) + one backend (Railway). Do **not** deploy `phase-*/` folders.
+One frontend (Vercel/Netlify) + one backend (Railway or Netlify Functions). Do **not** deploy `phase-*/` folders.
+
+> **Note:** For deploying the backend to Netlify using Serverless Functions, see [DEPLOY_NETLIFY.md](file:///d:/blinkitmvp/DEPLOY_NETLIFY.md).
 
 **GitHub repo:** https://github.com/vrittikht/blinkitmvp
 

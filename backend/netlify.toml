@@ -1,0 +1,17 @@
+[build]
+  functions = "functions"
+
+[functions]
+  included_files = ["app/**", "mvp_category_quest.db", "category_quest.db"]
+
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Headers = "*"
+    Access-Control-Allow-Methods = "*"
